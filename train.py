@@ -75,6 +75,7 @@ DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device("mp
 # initialize the training set and loader
 dataset = NACCDataset("./data/investigator_nacc57.csv", f"./features/combined", fold=FOLD)
 dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+validation_set = TensorDataset(*dataset.val())
 
 # create the model
 if not MODEL:
@@ -93,8 +94,8 @@ for epoch in range(EPOCHS):
 
     for i, batch in tqdm(enumerate(iter(dataloader)), total=len(dataloader)):
         if i % 64 == 0 and i != 0:
-            alignment = sample_alignment(model, dataset)
-            uniformity = sample_uniformity(model, dataset)
+            alignment = sample_alignment(model, validation_set)
+            uniformity = sample_uniformity(model, validation_set)
 
             run.log({"alignment": alignment.detach().cpu().item(),
                      "uniformity": uniformity.detach().cpu().item()})
