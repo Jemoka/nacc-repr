@@ -45,7 +45,7 @@ class NACCEmbedder(nn.Module):
 
         if not self.training:
             return {
-                "latent": base_latent_state,
+                "latent": base_latent_state/torch.norm(base_latent_state),
             }
 
         pos = self.linear0(torch.unsqueeze(x_pos, dim=2))
