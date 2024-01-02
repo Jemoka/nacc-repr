@@ -92,8 +92,7 @@ for epoch in range(EPOCHS):
     print(f"Currently training epoch {epoch}...")
 
     for i, batch in tqdm(enumerate(iter(dataloader)), total=len(dataloader)):
-        if i % 64 == 0:
-            print("Sampling alignment and uniformity...")
+        if i % 64 == 0 and i != 0:
             alignment = sample_alignment(model, dataset)
             uniformity = sample_uniformity(model, dataset)
 
@@ -111,7 +110,9 @@ for epoch in range(EPOCHS):
 
         # run with actual backprop
         try:
-            output = model(batch[0].float(), batch[1])
+            output = model(batch[0].float(), batch[1],
+                           batch[2].float(), batch[3],
+                           batch[4].float(), batch[5])
         except RuntimeError:
             optimizer.zero_grad()
             continue
@@ -128,7 +129,6 @@ for epoch in range(EPOCHS):
         run.log({"loss": output["loss"].detach().cpu().item()})
 
         if i % 64 == 0:
-            print("Logging sample representation...")
             run.log({"repr": output["latent"][0].detach().cpu()})
 
 # Saving

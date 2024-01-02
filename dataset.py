@@ -123,12 +123,33 @@ class NACCDataset(Dataset):
         self.val_data = data[data.NACCID.isin(test_participants)][features]
         self.val_targets = data[data.NACCID.isin(test_participants)].current_target
 
+        # calculate the matched pairs with a different target and the same target
+        self.val_alt_matching = self.val_data.copy()
+        self.val_alt_contrasting = self.val_data.copy()
+
+        # we basically just shuffle the matching outputs and not maching outputs to be able to compute the h+ and h- pairs
+        for i in [0,1,2]:
+            self.val_alt_matching.loc[self.val_targets == i, :] = self.val_data[self.val_targets == i].sample(frac=1,
+                                                                                                              random_state=7).to_numpy()
+            self.val_alt_contrasting.loc[self.val_targets == i, :] = self.val_data[~(self.val_targets == i)].sample(n=sum(self.val_targets == i),
+                                                                                                                    random_state=7).to_numpy()
+
+
         self.data = data[data.NACCID.isin(train_participants)][features]
         self.targets = data[data.NACCID.isin(train_participants)].current_target
 
+        self.data_alt_matching = self.data.copy()
+        self.data_alt_contrasting = self.data.copy()
+
+        for i in [0,1,2]:
+            self.data_alt_matching.loc[self.targets == i, :] = self.data[self.targets == i].sample(frac=1,
+                                                                                                   random_state=7).to_numpy()
+            self.data_alt_contrasting.loc[self.targets == i, :] = self.data[~(self.targets == i)].sample(n=sum(self.targets == i),
+                                                                                                         random_state=7).to_numpy()
+
         self.features = features
 
-    def __process(self, data, target, index=None):
+    def __process(self, data, data_pos, data_neg, target, index=None):
         # as a test, we report results without masking
         # if a data entry is <0 or >80, it is "not found"
         # so, we encode those values as 0 in the FEATURE
@@ -138,10 +159,24 @@ class NACCDataset(Dataset):
         # then, the found-ness becomes a mask
         data_found_mask = data_found
 
+        ####### 
+
+        data_pos_found = (data_pos > 80) | (data_pos < 0)
+        data_pos[data_pos_found] = 0
+        data_pos_found_mask = data_pos_found
+
+        ####### 
+
+        data_neg_found = (data_neg > 80) | (data_neg < 0)
+        data_neg[data_pos_found] = 0
+        data_neg_found_mask = data_neg_found
+
         # if it is a sample with no tangible data
         # well give up and get another sample:
-        if sum(~data_found_mask) == 0:
-            if not index:
+        if (sum(~data_found_mask) == 0 or
+            sum(~data_neg_found_mask) == 0 or
+            sum(~data_pos_found_mask) == 0):
+            if index == None:
                 raise ValueError("All-Zero found in validation!")
             indx = random.randint(2,5)
             if index-indx <= 0:
@@ -154,14 +189,20 @@ class NACCDataset(Dataset):
         # and set it
         one_hot_target[target] = 1
 
-        return torch.tensor(data).float()/30, torch.tensor(data_found_mask).bool(), torch.tensor(one_hot_target).float()
+        return (torch.tensor(data).float()/30, torch.tensor(data_found_mask).bool(),
+                torch.tensor(data_pos).float()/30, torch.tensor(data_pos_found_mask).bool(),
+                torch.tensor(data_neg).float()/30, torch.tensor(data_neg_found_mask).bool(),
+                torch.tensor(one_hot_target).float())
 
     def __getitem__(self, index):
         # index the data
         data = self.data.iloc[index].copy()
         target = self.targets.iloc[index].copy()
 
-        return self.__process(data, target, index)
+        data_pos = self.data_alt_matching.iloc[index].copy()
+        data_neg = self.data_alt_contrasting.iloc[index].copy()
+
+        return self.__process(data, data_pos, data_neg, target, index)
 
     @functools.cache
     def val(self):
@@ -176,7 +217,7 @@ class NACCDataset(Dataset):
         for index in tqdm(range(len(self.val_data))):
             try:
                 dataset.append(self.__process(self.val_data.iloc[index].copy(),
-                                            self.val_targets.iloc[index].copy()))
+                                              self.val_targets.iloc[index].copy()))
             except ValueError:
                 continue # all zero ignore
 
@@ -189,3 +230,6 @@ class NACCDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
+
+# dataset = NACCDataset("./data/investigator_nacc57.csv", f"./features/combined")
+# dataset[4]

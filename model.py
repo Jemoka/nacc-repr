@@ -29,51 +29,69 @@ class NACCEmbedder(nn.Module):
         self.tanh = nn.Tanh()
 
     # tau is the temperature parameter to normalize the encodings
-    def forward(self, x, mask, tau = 0.05):
-        net = self.linear0(torch.unsqueeze(x, dim=2))
+    def forward(self, x, mask,
+                x_pos, pos_mask,
+                x_neg, neg_mask, tau = 0.05):
 
-        # pass through the model twice
+        base = self.linear0(torch.unsqueeze(x, dim=2))
+        pos = self.linear0(torch.unsqueeze(x_pos, dim=2))
+        neg = self.linear0(torch.unsqueeze(x_neg, dim=2))
+
         # Because we don't have a [CLS] token that's constant
         # we perform embedding by averaging all the tokens together
 
-        first_encoding = self.encoder(net.transpose(0,1), src_key_padding_mask=mask).transpose(0,1)
-        first_latent_state = torch.mean(first_encoding, dim=1)
-        first_latent_state = self.tanh(self.linear1(first_latent_state))
-        first_latent_state = self.tanh(self.linear2(first_latent_state))
+        base_encoding = self.encoder(base.transpose(0,1), src_key_padding_mask=mask).transpose(0,1)
+        base_latent_state = torch.mean(base_encoding, dim=1)
+        base_latent_state = self.tanh(self.linear1(base_latent_state))
+        base_latent_state = self.tanh(self.linear2(base_latent_state))
 
         if not self.training:
             return {
-                "latent": first_latent_state,
+                "latent": base_latent_state,
             }
 
-        second_encoding = self.encoder(net.transpose(0,1)).transpose(0,1)
-        second_latent_state = torch.mean(second_encoding, dim=1)
-        second_latent_state = self.tanh(self.linear1(second_latent_state))
-        second_latent_state = self.tanh(self.linear2(second_latent_state))
+        # compute positive "entailment" and "contradiction" pairs
+
+        pos_encoding = self.encoder(pos.transpose(0,1), src_key_padding_mask=pos_mask).transpose(0,1)
+        pos_latent_state = torch.mean(pos_encoding, dim=1)
+        pos_latent_state = self.tanh(self.linear1(pos_latent_state))
+        pos_latent_state = self.tanh(self.linear2(pos_latent_state))
+
+        neg_encoding = self.encoder(neg.transpose(0,1), src_key_padding_mask=neg_mask).transpose(0,1)
+        neg_latent_state = torch.mean(neg_encoding, dim=1)
+        neg_latent_state = self.tanh(self.linear1(neg_latent_state))
+        neg_latent_state = self.tanh(self.linear2(neg_latent_state))
 
         # compute pairwise consine similarity
-        all_sims = []
-        agreeing_sims = []
-        
-        # calculate pairwise cosine similarity, setting up for
-        # eqn1 for Gao et al
-        for indx_i, i in enumerate(first_latent_state):
-            for indx_j, j in enumerate(second_latent_state):
-                sim = (i.T @ j)/torch.norm(i)/torch.norm(j)
-                all_sims.append(sim)
-                if indx_i == indx_j:
-                    agreeing_sims.append(sim)
+        all_errors = []
 
-        # tabulate the similaities, and use it to formulate 
-        # the training objective (eqn 1 in gao et al)
-        normalization = torch.sum(torch.exp(torch.stack(all_sims))/tau)
-        agreeing_sims = torch.exp(torch.stack(agreeing_sims))/tau
+        # for each element in the batch, compute the loss
+        col_loss = []
 
-        contrastive_obj = -torch.log(agreeing_sims/normalization)
+        for i in range(x.shape[0]):
+            # compute hi, h+, and h-
+            h_i = base_latent_state[i]
+            h_p = pos_latent_state[i]
+
+            # e^(sim(hi, hp)/tau)
+            top = torch.exp(((h_i.T @ h_p)/torch.norm(h_i)/torch.norm(h_p))/tau)
+
+            bottom = []
+
+            # calculate each negative value
+            for j in range(x.shape[0]):
+                hj_p = pos_latent_state[j]
+                hj_n = neg_latent_state[j]
+                bottom.append(torch.exp((((h_i.T @ hj_p)/torch.norm(h_i)/torch.norm(hj_p)))/tau) + 
+                              torch.exp((((h_i.T @ hj_n)/torch.norm(h_i)/torch.norm(hj_n)))/tau))
+
+            col_loss.append(-torch.log(top/torch.sum(torch.stack(bottom))))
 
         return {
-            "latent": first_latent_state,
-            "loss": torch.mean(contrastive_obj)
+            "latent": base_latent_state,
+            "pos": pos_latent_state,
+            "neg": neg_latent_state,
+            "loss": torch.mean(torch.stack(col_loss))
         }
 
 # emb = NACCEmbedder(len(dataset.features))
