@@ -30,12 +30,10 @@ class NACCEmbedder(nn.Module):
 
     # tau is the temperature parameter to normalize the encodings
     def forward(self, x, mask,
-                x_pos, pos_mask,
-                x_neg, neg_mask, tau = 0.05):
+                x_pos=None, pos_mask=None,
+                x_neg=None, neg_mask=None, tau = 0.05):
 
         base = self.linear0(torch.unsqueeze(x, dim=2))
-        pos = self.linear0(torch.unsqueeze(x_pos, dim=2))
-        neg = self.linear0(torch.unsqueeze(x_neg, dim=2))
 
         # Because we don't have a [CLS] token that's constant
         # we perform embedding by averaging all the tokens together
@@ -49,6 +47,9 @@ class NACCEmbedder(nn.Module):
             return {
                 "latent": base_latent_state,
             }
+
+        pos = self.linear0(torch.unsqueeze(x_pos, dim=2))
+        neg = self.linear0(torch.unsqueeze(x_neg, dim=2))
 
         # compute positive "entailment" and "contradiction" pairs
 
