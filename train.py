@@ -93,7 +93,7 @@ for epoch in range(EPOCHS):
     print(f"Currently training epoch {epoch}...")
 
     for i, batch in tqdm(enumerate(iter(dataloader)), total=len(dataloader)):
-        if i % 64 == 0 and i != 0:
+        if i % 64 == 0:
             alignment = sample_alignment(model, validation_set)
             uniformity = sample_uniformity(model, validation_set)
 

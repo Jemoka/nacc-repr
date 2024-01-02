@@ -18,7 +18,11 @@ def sample_uniformity(model, dataset, num_samples=100):
 
         # calculate embedding latents
         with torch.inference_mode():
+            was_training = model.training
+            model.eval()
             x,y = model(inp.to(device), mask.to(device))["latent"]
+            if was_training:
+                model.train()
 
         # calculate uniformity objective
         square_dist = torch.norm(x-y)**2
@@ -48,8 +52,12 @@ def sample_alignment(model, dataset, num_samples=100):
 
         # calculate embedding latents
         with torch.inference_mode():
+            was_training = model.training
+            model.eval()
             x,y = (model(inp_1.to(device), mask_1.to(device))["latent"],
                    model(inp_2.to(device), mask_2.to(device))["latent"])
+            if was_training:
+                model.train()
 
         # calculate uniformity objective
         square_dist = torch.norm(x-y)**2
