@@ -40,11 +40,11 @@ def sample_alignment(model, dataset, num_samples=100):
         sample = next(sampler)
         inp_1 = sample[0]
         mask_1 = sample[1]
-        target = sample[2]
+        target = sample[-1]
 
         # get other sample of the same class
         sample = next(sampler)
-        while not torch.all(sample[2] == target):
+        while not torch.all(sample[-1] == target):
             sample = next(sampler)
 
         # and get its values

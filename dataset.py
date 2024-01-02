@@ -224,10 +224,16 @@ class NACCDataset(Dataset):
                 continue # all zero ignore
 
         # return parts
-        inp, mask, out = zip(*dataset)
+        (inp, mask,
+         pos, pmask,
+         neg, nmask,
+         out) = zip(*dataset)
 
         # process already divides by 30; don't do it twice
-        return torch.stack(inp).float(), torch.stack(mask).bool(), torch.stack(out).float()
+        return (torch.stack(inp).float(), torch.stack(mask).bool(),
+                torch.stack(pos).float(), torch.stack(pmask).bool(),
+                torch.stack(neg).float(), torch.stack(nmask).bool(),
+                torch.stack(out).float())
 
     def __len__(self):
         return len(self.data)
