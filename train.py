@@ -84,6 +84,8 @@ else:
     model = NACCEmbedder(dataset._num_features, latent=config.latent_size, nhead=config.nhead, nlayers=config.nlayers).to(DEVICE)
     model.load_state_dict(torch.load(os.path.join(f"./models/{MODEL}", "model.save"), map_location=DEVICE))
 
+run.watch(model)
+
 # and optimizer
 optimizer = AdamW(model.parameters(), lr=LR, weight_decay=1e-5)
 
