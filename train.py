@@ -42,7 +42,7 @@ from dataset import NACCDataset
 
 CONFIG = {
     "fold": 0,
-    "batch_size": 128,
+    "batch_size": 64,
     "lr": 0.0001,
     "epochs": 55,
 
@@ -52,7 +52,7 @@ CONFIG = {
     "nhead": 4,
     "nlayers": 3,
 
-    "latent_size": 128,
+    "latent_size": 256,
 }
 
 
