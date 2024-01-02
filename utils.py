@@ -60,7 +60,7 @@ def sample_alignment(model, dataset, num_samples=100):
                 model.train()
 
         # calculate uniformity objective
-        square_dist = torch.norm(x-y)**2
+        square_dist = torch.norm((x-y).squeeze())**2
         samples.append(square_dist)
 
     return torch.mean(torch.stack(samples))
