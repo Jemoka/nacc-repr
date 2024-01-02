@@ -42,14 +42,9 @@ def sample_alignment(model, dataset, num_samples=100):
         mask_1 = sample[1]
         target = sample[-1]
 
-        # get other sample of the same class
-        sample = next(sampler)
-        while not torch.all(sample[-1] == target):
-            sample = next(sampler)
-
         # and get its values
-        inp_2 = sample[0]
-        mask_2 = sample[1]
+        inp_2 = sample[2]
+        mask_2 = sample[3]
 
         # calculate embedding latents
         with torch.inference_mode():
