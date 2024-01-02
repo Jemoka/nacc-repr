@@ -43,9 +43,11 @@ class NACCEmbedder(nn.Module):
         base_latent_state = self.tanh(self.linear1(base_latent_state))
         base_latent_state = self.tanh(self.linear2(base_latent_state))
 
+        normalized_latents = (base_latent_state.T/torch.norm(base_latent_state, dim=1)).T
+
         if not self.training:
             return {
-                "latent": base_latent_state/torch.norm(base_latent_state),
+                "latent": normalized_latents,
             }
 
         pos = self.linear0(torch.unsqueeze(x_pos, dim=2))
@@ -89,7 +91,7 @@ class NACCEmbedder(nn.Module):
             col_loss.append(-torch.log(top/torch.sum(torch.stack(bottom))))
 
         return {
-            "latent": base_latent_state,
+            "latent": normalized_latents,
             "pos": pos_latent_state,
             "neg": neg_latent_state,
             "loss": torch.mean(torch.stack(col_loss))
