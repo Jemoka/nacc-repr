@@ -217,6 +217,8 @@ class NACCDataset(Dataset):
         for index in tqdm(range(len(self.val_data))):
             try:
                 dataset.append(self.__process(self.val_data.iloc[index].copy(),
+                                              self.val_alt_matching.iloc[index].copy(),
+                                              self.val_alt_contrasting.iloc[index].copy(),
                                               self.val_targets.iloc[index].copy()))
             except ValueError:
                 continue # all zero ignore
