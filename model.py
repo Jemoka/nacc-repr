@@ -31,6 +31,7 @@ class NACCEmbedder(nn.Module):
         # tanh
         self.tanh = nn.Tanh()
         self.softmax = nn.Softmax(1)
+        self.criterion = nn.CrossEntropyLoss()
 
     # tau is the temperature parameter to normalize the encodings
     def forward(self, x, mask, 
@@ -56,7 +57,7 @@ class NACCEmbedder(nn.Module):
             return {
                 "latent": normalized_latents,
                 "logits": preds,
-                "loss": torch.mean(torch.log(preds)*pretrain_target)
+                "loss": self.criterion(preds, pretrain_target)
             }
 
         if not self.training:

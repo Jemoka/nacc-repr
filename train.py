@@ -159,7 +159,7 @@ for epoch in range(EPOCHS):
 
             run.log({"alignment": alignment,
                      "uniformity": uniformity,
-                     "accuracy": accuracy})
+                     "accuracy": accuracy}, commit=False)
             
 
         batchp = batch
@@ -191,11 +191,14 @@ for epoch in range(EPOCHS):
         optimizer.step()
         optimizer.zero_grad()
 
-        # logging
-        run.log({"loss": output["loss"].detach().cpu().item()})
-
         if i % 64 == 0:
-            run.log({"repr": output["latent"][0].detach().cpu()})
+            run.log({"repr": output["latent"][0].detach().cpu()}, commit=False)
+
+        # logging
+        if is_pretraining:
+            run.log({"pretrain_loss": output["loss"].detach().cpu().item()})
+        else:
+            run.log({"loss": output["loss"].detach().cpu().item()})
 
     print("Acc:", sum(running_acc)/len(running_acc), last_running_acc)
     print("A/U Sum:", sum(running_a_u_sum)/len(running_a_u_sum), last_running_au_sum)
