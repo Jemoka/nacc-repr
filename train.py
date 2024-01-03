@@ -199,14 +199,18 @@ for epoch in range(EPOCHS):
         if i % 64 == 0:
             run.log({"repr": output["latent"][0].detach().cpu()})
 
+    print("Acc:", sum(running_acc)/len(running_acc), last_running_acc)
+    print("A/U Sum:", sum(running_a_u_sum)/len(running_a_u_sum) >= last_running_au_sum)
+
     if ((is_pretraining and
          sum(running_acc)/len(running_acc) <= last_running_acc) or
         (is_pretraining == False and
          sum(running_a_u_sum)/len(running_a_u_sum) >= last_running_au_sum)):
+        print("No Improvement!")
         no_improvement_counter += 1
     else:
         no_improvement_counter = 0
-        print("Saving model...")
+        print("Improvement! Saving model...")
         if not os.path.exists(f"./models/{run.name}"):
             os.mkdir(f"./models/{run.name}")
         torch.save(model.state_dict(), f"./models/{run.name}/model.save")
