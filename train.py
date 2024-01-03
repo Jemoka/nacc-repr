@@ -89,8 +89,6 @@ dataset = NACCDataset("./data/investigator_nacc57.csv", f"./features/combined", 
 dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 validation_set = TensorDataset(*dataset.val())
 validation_loader = DataLoader(validation_set, batch_size=BATCH_SIZE, shuffle=True)
-import copy
-dataloader = copy.deepcopy(validation_loader)
 
 
 # create the model
@@ -200,7 +198,7 @@ for epoch in range(EPOCHS):
             run.log({"repr": output["latent"][0].detach().cpu()})
 
     print("Acc:", sum(running_acc)/len(running_acc), last_running_acc)
-    print("A/U Sum:", sum(running_a_u_sum)/len(running_a_u_sum) >= last_running_au_sum)
+    print("A/U Sum:", sum(running_a_u_sum)/len(running_a_u_sum), last_running_au_sum)
 
     if ((is_pretraining and
          sum(running_acc)/len(running_acc) <= last_running_acc) or
