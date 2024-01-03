@@ -44,7 +44,7 @@ CONFIG = {
     "fold": 0,
     "batch_size": 64,
     "lr": 0.0001,
-    "epochs": 55,
+    "epochs": 128,
 
     # "base": "efficient-dragon-18",
     "base": None,
@@ -53,6 +53,14 @@ CONFIG = {
     "nlayers": 3,
 
     "latent_size": 256,
+
+    # stop after number of epochs without improvement
+    "pretrain__stopping_epochs": 3,
+    # maximum epochs
+    "pretrain__max_epochs": 50,
+
+    # stop after number of epochs without improvement
+    "stopping_epochs": 5,
 }
 
 
@@ -69,6 +77,10 @@ EPOCHS = config.epochs
 MODEL = config.base
 FOLD = config.fold
 
+PRETRAIN_EARLY = config.pretrain__stopping_epochs
+PRETRAIN_MAX = config.pretrain__max_epochs
+TRAIN_EARLY = config.stopping_epochs
+
 # initialize the device
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device("mps") if torch.backends.mps.is_available() else torch.device('cpu')
 
@@ -76,6 +88,10 @@ DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device("mp
 dataset = NACCDataset("./data/investigator_nacc57.csv", f"./features/combined", fold=FOLD)
 dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 validation_set = TensorDataset(*dataset.val())
+validation_loader = DataLoader(validation_set, batch_size=BATCH_SIZE, shuffle=True)
+import copy
+dataloader = copy.deepcopy(validation_loader)
+
 
 # create the model
 if not MODEL:
@@ -89,18 +105,63 @@ run.watch(model)
 # and optimizer
 optimizer = AdamW(model.parameters(), lr=LR, weight_decay=1e-5)
 
+# if the model is pretraining
+is_pretraining = True
+
+# get the last running accuracy
+last_running_acc = 0
+last_running_au_sum = 0
+no_improvement_counter = 0
 
 model.train()
 for epoch in range(EPOCHS):
+    if is_pretraining:
+        if no_improvement_counter >= PRETRAIN_EARLY:
+            print(f"STOPPING pretraining! No improvement for {PRETRAIN_EARLY} steps! Moving on to representation learning.") 
+            is_pretraining = False
+        elif epoch >= PRETRAIN_MAX:
+            print(f"STOPPING pretraining! Moving on after {epoch} epochs") 
+            is_pretraining = False
+    elif not is_pretraining and no_improvement_counter > TRAIN_EARLY:
+        print(f"EARLY STOPPING training! No improvement for {TRAIN_EARLY} steps!") 
+        break
+        
     print(f"Currently training epoch {epoch}...")
+
+    running_acc = []
+    # alignment + uniformity
+    running_a_u_sum = []
 
     for i, batch in tqdm(enumerate(iter(dataloader)), total=len(dataloader)):
         if i % 64 == 0:
             alignment = sample_alignment(model, validation_set)
             uniformity = sample_uniformity(model, validation_set)
 
-            run.log({"alignment": alignment.detach().cpu().item(),
-                     "uniformity": uniformity.detach().cpu().item()})
+            # create a single validation batch
+            val_batch = next(iter(validation_loader))
+            val_batch = [i.to(DEVICE) for i in val_batch]
+
+            # perform inference
+            with torch.inference_mode():
+                model.eval()
+                logits = model(val_batch[0], val_batch[1])["logits"]
+                model.train()
+
+            # and calculate accuracy via the labels
+            label_indicies = torch.argmax(val_batch[-1], 1)
+            accuracy = sum(label_indicies == torch.argmax(logits, axis=1))/len(label_indicies)
+            accuracy = accuracy.detach().cpu().item()
+
+            # detach other variables
+            alignment = alignment.detach().cpu().item()
+            uniformity = uniformity.detach().cpu().item()
+
+            running_acc.append(accuracy)
+            running_a_u_sum.append(alignment+uniformity)
+
+            run.log({"alignment": alignment,
+                     "uniformity": uniformity,
+                     "accuracy": accuracy})
             
 
         batchp = batch
@@ -113,10 +174,14 @@ for epoch in range(EPOCHS):
 
         # run with actual backprop
         try:
-            output = model(batch[0].float(), batch[1],
-                           batch[2].float(), batch[3],
-                           batch[4].float(), batch[5])
-        except RuntimeError:
+            if is_pretraining:
+                output = model(batch[0].float(), batch[1], pretrain_target=batch[-1])
+            else:
+                output = model(batch[0].float(), batch[1],
+                               batch[2].float(), batch[3],
+                               batch[4].float(), batch[5])
+        except RuntimeError as e:
+            print(e)
             optimizer.zero_grad()
             continue
 
@@ -134,8 +199,26 @@ for epoch in range(EPOCHS):
         if i % 64 == 0:
             run.log({"repr": output["latent"][0].detach().cpu()})
 
+    if ((is_pretraining and
+         sum(running_acc)/len(running_acc) <= last_running_acc) or
+        (is_pretraining == False and
+         sum(running_a_u_sum)/len(running_a_u_sum) >= last_running_au_sum)):
+        no_improvement_counter += 1
+    else:
+        no_improvement_counter = 0
+        print("Saving model...")
+        if not os.path.exists(f"./models/{run.name}"):
+            os.mkdir(f"./models/{run.name}")
+        torch.save(model.state_dict(), f"./models/{run.name}/model.save")
+        torch.save(optimizer, f"./models/{run.name}/optimizer.save")
+
+        last_running_acc = sum(running_acc)/len(running_acc)
+        last_running_au_sum = sum(running_a_u_sum)/len(running_a_u_sum)
+
 # Saving
-print("Saving model...")
-os.mkdir(f"./models/{run.name}")
-torch.save(model.state_dict(), f"./models/{run.name}/model.save")
-torch.save(optimizer, f"./models/{run.name}/optimizer.save")
+if epoch == EPOCHS - 1:
+    print("Saving model...")
+    if not os.path.exists(f"./models/{run.name}"):
+        os.mkdir(f"./models/{run.name}")
+    torch.save(model.state_dict(), f"./models/{run.name}/model.save")
+    torch.save(optimizer, f"./models/{run.name}/optimizer.save")

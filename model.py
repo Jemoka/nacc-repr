@@ -8,7 +8,7 @@ from dataset import NACCDataset
 # len(dataset.features)
 
 class NACCEmbedder(nn.Module):
-    def __init__(self, input_dim, latent=128, nhead=4, nlayers=3):
+    def __init__(self, input_dim, latent=128, nhead=4, nlayers=3, num_pretrain_classes=3):
         # call early initializers
         super(NACCEmbedder, self).__init__()
 
@@ -25,13 +25,17 @@ class NACCEmbedder(nn.Module):
         self.linear1 = nn.Linear(latent, latent)
         self.linear2 = nn.Linear(latent, latent)
 
+        # the modeling head
+        self.linear3 = nn.Linear(latent, num_pretrain_classes)
+
         # tanh
         self.tanh = nn.Tanh()
+        self.softmax = nn.Softmax(1)
 
     # tau is the temperature parameter to normalize the encodings
-    def forward(self, x, mask,
+    def forward(self, x, mask, 
                 x_pos=None, pos_mask=None,
-                x_neg=None, neg_mask=None, tau = 0.05):
+                x_neg=None, neg_mask=None, pretrain_target=None, tau = 0.05):
 
         base = self.linear0(torch.unsqueeze(x, dim=2))
 
@@ -43,11 +47,22 @@ class NACCEmbedder(nn.Module):
         base_latent_state = self.tanh(self.linear1(base_latent_state))
         base_latent_state = self.tanh(self.linear2(base_latent_state))
 
+        # calculate predictions and normalized latents
+        preds = self.softmax(self.linear3(base_latent_state))
         normalized_latents = (base_latent_state.T/torch.norm(base_latent_state, dim=1)).T
+
+        # if we are pretraining, just compute the pretraining target and loss
+        if pretrain_target != None:
+            return {
+                "latent": normalized_latents,
+                "logits": preds,
+                "loss": torch.mean(torch.log(preds)*pretrain_target)
+            }
 
         if not self.training:
             return {
                 "latent": normalized_latents,
+                "logits": preds
             }
 
         pos = self.linear0(torch.unsqueeze(x_pos, dim=2))
@@ -94,6 +109,7 @@ class NACCEmbedder(nn.Module):
             "latent": normalized_latents,
             "pos": pos_latent_state,
             "neg": neg_latent_state,
+            "logits": preds,
             "loss": torch.mean(torch.stack(col_loss))
         }
 
